@@ -4,7 +4,7 @@ from ofxparse import OfxParser
 import io
 
 # Configuração da página e Estilo Dark
-st.set_page_config(page_title="Padronização de OFX", page_icon="📝", layout="centered")
+st.set_page_config(page_title="Listagem de OFX", page_icon="✏️​", layout="centered")
 
 st.markdown("""
     <style>
@@ -29,8 +29,8 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # Header inspirado na imagem
-st.markdown("# 📝 Tratamento e Padronização de OFX")
-st.markdown("Faça o upload do seu arquivo <span style='color: #4CAF50; font-weight: bold;'>.ofx</span> para iniciar o processo de limpeza.", unsafe_allow_html=True)
+st.markdown("# ✏️​ Listagem de OFX")
+st.markdown("Faça o upload do seu arquivo <span style='color: #4CAF50; font-weight: bold;'>.ofx</span> limpo para iniciar o processo de listagem.", unsafe_allow_html=True)
 
 uploaded_file = st.file_uploader("", type=["ofx"])
 
