@@ -1,80 +1,105 @@
 import streamlit as st
 import pandas as pd
-from ofxparse import OfxParser
+import re
 import io
 
-# Configuração da página e Estilo Dark
-st.set_page_config(page_title="Listagem de OFX", page_icon="✏️​", layout="centered")
+# Configuração da página
+st.set_page_config(page_title="Listagem de OFX", page_icon="✏️", layout="centered")
 
+# Estilo CSS para o novo design (Dark Mode com acentos específicos)
 st.markdown("""
     <style>
     .main { background-color: #0e1117; }
-    h1 { color: #ffffff; font-family: 'sans-serif'; font-weight: 700; }
-    p { color: #a3a8b4; }
-    .stButton>button {
-        width: 100%;
-        border-radius: 5px;
-        height: 3em;
-        background-color: #262730;
-        color: white;
-        border: 1px solid #4f535e;
+    .title-container {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        margin-bottom: 5px;
     }
-    .stButton>button:hover { border-color: #00ff00; color: #00ff00; }
-    /* Estilizando a área de upload */
+    .title-text {
+        color: #ffffff;
+        font-size: 42px;
+        font-weight: 800;
+        font-family: 'Source Sans Pro', sans-serif;
+    }
+    .subtitle-text {
+        color: #a3a8b4;
+        font-size: 18px;
+        margin-bottom: 30px;
+    }
+    .ofx-green { color: #00c853; font-weight: bold; }
+    
+    /* Estilização do Upload */
     section[data-testid="stFileUploadDropzone"] {
         background-color: #161b22;
         border: 1px dashed #30363d;
+        border-radius: 8px;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# Header inspirado na imagem
-st.markdown("# ✏️​ Listagem de OFX")
-st.markdown("Faça o upload do seu arquivo <span style='color: #4CAF50; font-weight: bold;'>.ofx</span> limpo para iniciar o processo de listagem.", unsafe_allow_html=True)
+# Header conforme a nova imagem
+st.markdown("""
+    <div class="title-container">
+        <span style="font-size: 40px;">✏️</span>
+        <span class="title-text">Listagem de OFX</span>
+    </div>
+    <p class="subtitle-text">
+        Faça o upload do seu arquivo <span class="ofx-green">.ofx</span> limpo para iniciar o processo de listagem.
+    </p>
+    """, unsafe_allow_html=True)
 
 uploaded_file = st.file_uploader("", type=["ofx"])
 
 if uploaded_file is not None:
     try:
-        # Parsing do OFX
-        ofx = OfxParser.parse(uploaded_file)
-        data = []
-
-        for account in ofx.accounts:
-            for tx in account.statement.transactions:
-                # Filtro: Se tem '#' no memo e é um crédito (valor > 0)
-                if '#' in tx.memo and tx.amount > 0:
-                    # Extrai o código após o #
-                    codigo_fatura = tx.memo.split('#')[-1].strip()
-                    
-                    data.append({
-                        "Código da Fatura": codigo_fatura,
-                        "Valor (R$)": float(tx.amount),
-                        "Data de Pagamento": tx.date.strftime("%d/%m/%Y"),
-                        "Descrição Original": tx.memo
-                    })
-
-        if data:
-            df = pd.DataFrame(data)
+        # Lê o conteúdo ignorando erros de caracteres especiais
+        raw_content = uploaded_file.read().decode("utf-8", errors="ignore")
+        
+        # Expressão Regular para extrair blocos de transação de forma robusta
+        # Pega o valor (TRNAMT), a data (DTPOSTED) e a descrição (MEMO)
+        transactions = re.findall(r"<STMTTRN>.*?<TRNAMT>(.*?)<.*?<DTPOSTED>(.*?)<.*?<MEMO>(.*?)<", raw_content, re.DOTALL)
+        
+        extracted_data = []
+        
+        for amt, dt, memo in transactions:
+            amount = float(amt.strip())
+            memo_text = memo.strip()
             
-            st.divider()
-            st.subheader("Visualização dos Dados")
-            st.dataframe(df, use_container_width=True)
-
-            # Preparação do Excel em memória
+            # Filtro solicitado: apenas CRÉDITOS que contenham '#'
+            if '#' in memo_text and amount > 0:
+                # Extrai o código após o #
+                codigo = memo_text.split('#')[-1].strip()
+                
+                # Formata a data (YYYYMMDD -> DD/MM/YYYY)
+                data_limpa = dt.strip()[:8]
+                data_formatada = f"{data_limpa[6:8]}/{data_limpa[4:6]}/{data_limpa[0:4]}"
+                
+                extracted_data.append({
+                    "Código da Fatura": codigo,
+                    "Valor (R$)": amount,
+                    "Data de Pagamento": data_formatada
+                })
+        
+        if extracted_data:
+            df = pd.DataFrame(extracted_data)
+            
+            st.write("### Itens Encontrados")
+            st.dataframe(df, use_container_width=True, hide_index=True)
+            
+            # Gerar Excel em memória
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                 df.to_excel(writer, index=False, sheet_name='Faturas')
             
-            st.markdown("---")
             st.download_button(
-                label="📥 Clique aqui para baixar o Excel formatado",
+                label="📥 Baixar Lista em Excel",
                 data=output.getvalue(),
-                file_name=f"OFX_Tratado_{df['Data de Pagamento'].iloc[0].replace('/','-')}.xlsx",
+                file_name="Listagem_Faturas.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
         else:
-            st.warning("Nenhuma fatura com o padrão '#' foi encontrada neste arquivo.")
+            st.error("Nenhuma fatura com '#' foi encontrada. Verifique se o arquivo OFX possui créditos com esse padrão.")
 
     except Exception as e:
-        st.error(f"Erro ao processar o arquivo: {e}")
+        st.error(f"Ocorreu um erro ao processar: {e}")
